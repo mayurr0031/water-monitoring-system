@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Water Level Dashboard</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body {
+    font-family: Arial;
+    background: linear-gradient(135deg,#667eea,#764ba2);
+    color: white;
+    padding: 20px;
+}
+
+.container {
+    max-width: 1200px;
+    margin: auto;
+}
+
+.card {
+    background: white;
+    color: black;
+    padding: 20px;
+    margin: 10px;
+    border-radius: 10px;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit,minmax(250px,1fr));
+}
+
+.prediction {
+    text-align: center;
+    padding: 15px;
+    border-radius: 8px;
+}
+
+.low { background: #e8f5e9; }
+.high { background: #ffebee; }
+.unknown { background: #eee; }
+
+h1 { text-align:center; }
+</style>
+</head>
+
+<body>
+
+<h1>💧 Water Monitoring Dashboard</h1>
+
+<div class="container">
+
+<div class="grid">
+
+<div class="card">
+<h3>Manhole 1</h3>
+<p id="wl1">--</p>
+<p id="rr1">--</p>
+</div>
+
+<div class="card">
+<h3>Manhole 2</h3>
+<p id="wl2">--</p>
+<p id="rr2">--</p>
+</div>
+
+<div class="card">
+<h3>Difference</h3>
+<p id="diff">--</p>
+</div>
+
+</div>
+
+<div class="card">
+<h3>Prediction</h3>
+
+<div id="condition" class="prediction unknown">UNKNOWN</div>
+<div id="flood" class="prediction unknown">Flood: --</div>
+<div id="blockage" class="prediction unknown">Blockage: --</div>
+
+</div>
+
+<div class="card">
+<canvas id="chart"></canvas>
+</div>
+
+</div>
+
+<script>
+
+let chart;
+
+// ===== INIT =====
+document.addEventListener("DOMContentLoaded", () => {
+    initChart();
+    loadData();
+    setInterval(loadData, 5000);
+});
+
+// ===== CHART =====
+function initChart() {
+    const ctx = document.getElementById("chart");
+
+    chart = new Chart(ctx, {
+        type: "line",
+        data: {
+            labels: [],
+            datasets: [
+                { label:"WL1", data:[], borderColor:"blue" },
+                { label:"WL2", data:[], borderColor:"red" }
+            ]
+        }
+    });
+}
+
+// ===== LOAD DATA =====
+async function loadData() {
+    try {
+        const res = await fetch("/api/latest");
+        const data = await res.json();
+
+        if (data.device1) {
+            document.getElementById("wl1").innerText =
+                data.device1.water_level.toFixed(2) + " cm";
+            document.getElementById("rr1").innerText =
+                data.device1.rise_rate.toFixed(2);
+        }
+
+        if (data.device2) {
+            document.getElementById("wl2").innerText =
+                data.device2.water_level.toFixed(2) + " cm";
+            document.getElementById("rr2").innerText =
+                data.device2.rise_rate.toFixed(2);
+        }
+
+        document.getElementById("diff").innerText =
+            (data.level_difference || 0).toFixed(2);
+
+        // ===== PREDICTION =====
+        const predRes = await fetch("/api/predict");
+        const pred = await predRes.json();
+
+        updatePrediction(pred);
+
+        // ===== CHART =====
+        updateChart(data);
+
+    } catch (e) {
+        console.log(e);
+    }
+}
+
+// ===== UPDATE PREDICTION =====
+function updatePrediction(data) {
+
+    const cond = data.condition || "UNKNOWN";
+
+    const condDiv = document.getElementById("condition");
+    condDiv.innerText = cond;
+
+    condDiv.className = "prediction " +
+        (cond === "NORMAL" ? "low" :
+         cond === "BLOCKAGE" ? "high" :
+         cond === "FLOOD" ? "high" : "unknown");
+
+    document.getElementById("flood").innerText =
+        "Flood: " + (data.flood_risk || "--");
+
+    document.getElementById("blockage").innerText =
+        "Blockage: " + (data.blockage_risk || "--");
+}
+
+// ===== UPDATE CHART =====
+function updateChart(data) {
+
+    const time = new Date().toLocaleTimeString();
+
+    chart.data.labels.push(time);
+
+    chart.data.datasets[0].data.push(data.device1?.water_level || 0);
+    chart.data.datasets[1].data.push(data.device2?.water_level || 0);
+
+    if (chart.data.labels.length > 20) {
+        chart.data.labels.shift();
+        chart.data.datasets.forEach(d => d.data.shift());
+    }
+
+    chart.update();
+}
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"name": "HC-SR04",
+			"path": "."
+		},
+		{
+			"path": "../../server"
+		}
+	],
+	"settings": {
+		"liveServer.settings.multiRootWorkspaceName": "server"
+	}
+}
