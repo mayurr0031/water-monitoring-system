@@ -44,7 +44,7 @@ DB_CONFIG = {
     "database": os.getenv("DB_NAME", "water_level_monitor"),
 }
 
-TOMORROW_API_KEY = os.getenv("TOMORROW_API_KEY", "")
+TOMORROW_API_KEY = os.getenv("TOMORROW_API_KEY", '')
 TOMORROW_API_URL = "https://api.tomorrow.io/v4/weather/realtime"
 LOCATION_LAT = os.getenv("LOCATION_LAT", "28.7041")
 LOCATION_LON = os.getenv("LOCATION_LON", "77.1025")
