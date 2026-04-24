@@ -1,287 +1,137 @@
-# Water Level Monitoring System
+# 🌊 FloodWatch — IoT Flood Monitoring System
 
-A complete IoT solution for measuring water level using the HC-SR04 ultrasonic sensor with an ESP32 microcontroller. Data is transmitted to a Flask server and visualized on a real-time dashboard.
+Real-time flood and drainage-blockage detection using ESP32 ultrasonic sensors, a Flask backend, MySQL database, and a RandomForest ML model.
 
-## Project Structure
+---
+
+## Architecture
 
 ```
-HC-SR04/
-├── platformio.ini          # PlatformIO configuration
-├── src/
-│   └── main.cpp           # ESP32 firmware
-└── lib/
-    └── WaterLevel/
-        ├── WaterLevel.h   # Library header
-        └── WaterLevel.cpp # Library implementation
-
-server/
-├── app.py                 # Flask server
-├── requirements.txt       # Python dependencies
-└── dashboard.html         # Web dashboard
+┌──────────────────────────────────────────────────────────────┐
+│                     Hardware Layer                           │
+│  ┌─────────────┐         ┌─────────────┐                    │
+│  │  Node 1     │         │  Node 2     │                    │
+│  │  ESP32      │         │  ESP32      │                    │
+│  │  HC-SR04    │         │  HC-SR04    │                    │
+│  │ (Upstream)  │         │(Downstream) │                    │
+│  └──────┬──────┘         └──────┬──────┘                    │
+│         │  POST /api/water-level│                           │
+└─────────┼─────────────────────  ┼────────────────────────── ┘
+          │         WiFi          │
+          ▼                       ▼
+┌──────────────────────────────────────────────────────────────┐
+│                   Flask Server (app.py)                      │
+│                                                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐  │
+│  │ Sensor Data  │  │  ML Model    │  │  Weather API     │  │
+│  │ Ingestion    │  │ (RF + Rules) │  │  (Tomorrow.io)   │  │
+│  └──────┬───────┘  └──────┬───────┘  └────────┬─────────┘  │
+│         │                 │                    │            │
+│         ▼                 ▼                    ▼            │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │              MySQL Database                         │    │
+│  │   sensor_readings | predictions | weather_data      │    │
+│  └──────────────────────────┬──────────────────────────┘    │
+└─────────────────────────────┼────────────────────────────── ┘
+                              │
+                              ▼
+                   ┌──────────────────┐
+                   │  dashboard.html  │
+                   │  (Chart.js UI)   │
+                   │  Auto-refresh 5s │
+                   └──────────────────┘
 ```
+
+---
 
 ## Features
 
-### Hardware
-- **Sensor**: HC-SR04 Ultrasonic Distance Sensor
-- **Microcontroller**: ESP32 DevKit V1
-- **WiFi Connectivity**: For real-time data transmission
+- **Dual-node sensing** — Two ESP32 + HC-SR04 sensors at upstream and downstream points
+- **Rule-based + ML hybrid prediction** — Rules take priority; RandomForest supplements when NORMAL
+- **Real-time dashboard** — Auto-refreshing Chart.js UI with live water level, rise rate, and condition badge
+- **Weather integration** — Tomorrow.io API (fallback to dummy values when no key)
+- **MySQL persistence** — Three tables: `sensor_readings`, `predictions`, `weather_data`
+- **Thread-safe** — All DB operations protected by a threading Lock
+- **Environment-configured** — All secrets in `.env`
 
-### Software
-- **Firmware Library**: Custom WaterLevel library for accurate distance measurement
-- **Backend**: Flask web server with REST API
-- **Frontend**: Interactive HTML5 dashboard with real-time charts
+---
 
-### Measurements
-- Water level in centimeters
-- Rise rate (cm/s) with trend detection
-- Container fill percentage
-- Statistical analysis (min, max, average)
-
-## Hardware Setup
-
-### Pinout Configuration
-
-```
-HC-SR04 Sensor ↔ ESP32
-├── VCC         → 5V
-├── GND         → GND
-├── TRIG        → GPIO 5
-└── ECHO        → GPIO 18
-```
-
-### Water Level Calculation
-
-```
-Water Level (cm) = Base Height - Distance Measured
-Base Height = 40 cm (distance from sensor to container bottom)
-```
-
-## ESP32 Firmware Setup
-
-### Prerequisites
-- PlatformIO IDE or VS Code with PlatformIO extension
-- ESP32 USB driver
-
-### Installation
-
-1. **Configure WiFi Credentials**
-   
-   Edit `src/main.cpp` and update:
-   ```cpp
-   const char* ssid = "YOUR_SSID";
-   const char* password = "YOUR_PASSWORD";
-   ```
-
-2. **Configure Server URL**
-   
-   Update the server address (if not running on 192.168.1.100):
-   ```cpp
-   const char* serverUrl = "http://YOUR_SERVER_IP:5000/api/water-level";
-   ```
-
-3. **Build and Upload**
-   
-   ```bash
-   pio run -t upload
-   ```
-
-### Monitoring Serial Output
-
-```bash
-pio device monitor --baud 115200
-```
-
-### Configuration Parameters
-
-| Parameter | Value | Description |
-|-----------|-------|-------------|
-| `TRIGGER_PIN` | 5 | GPIO pin for sensor trigger |
-| `ECHO_PIN` | 18 | GPIO pin for echo signal |
-| `BASE_HEIGHT_CM` | 40.0 | Distance from sensor to container bottom |
-| `CONTAINER_HEIGHT_CM` | 100.0 | Total container height |
-| `SEND_INTERVAL` | 5000 ms | How often to send data to server |
-
-## Flask Server Setup
-
-### Prerequisites
-- Python 3.7+
-- pip (Python package manager)
-
-### Installation
-
-1. **Install Dependencies**
-   
-   ```bash
-   cd server
-   pip install -r requirements.txt
-   ```
-
-2. **Run the Server**
-   
-   ```bash
-   python app.py
-   ```
-
-   Server will start on `http://localhost:5000`
-
-### API Endpoints
+## API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/api/water-level` | Receive sensor data from ESP32 |
-| `GET` | `/api/data` | Get all stored readings |
-| `GET` | `/api/latest` | Get the most recent reading |
-| `GET` | `/api/stats` | Get statistics and analysis |
-| `POST` | `/api/reset` | Clear all stored data |
-| `GET` | `/` | View the dashboard |
+| POST | `/api/water-level` | Receive ESP32 sensor JSON |
+| GET | `/api/latest` | Latest readings + prediction + weather |
+| GET | `/api/history?hours=N&device_id=N` | Historical sensor data |
+| GET | `/api/predict` | On-demand prediction (fetches live weather) |
+| GET | `/api/weather` | Fetch + store fresh weather data |
+| GET | `/api/device/<id>/stats` | Per-device statistics |
+| POST | `/api/reset` | Clear all DB data |
+| GET | `/` | Serve dashboard |
 
-### Data Storage
+---
 
-- **Memory Storage**: Readings stored in memory (max 1000 readings)
-- **Auto-rollover**: Oldest readings are removed when limit is reached
-- **Thread-safe**: Protected with locks for concurrent access
+## ESP32 JSON Payload
 
-## Dashboard Features
-
-### Real-Time Visualization
-
-1. **Water Level Gauge**
-   - Current water level in centimeters
-   - Live status indicator
-
-2. **Fill Percentage**
-   - Visual gauge showing container fullness
-   - Percentage display
-
-3. **Rise Rate Monitor**
-   - Real-time rate of change (cm/s)
-   - Status indicator (Rising/Falling/Stable)
-
-4. **Statistics Panel**
-   - Minimum water level
-   - Maximum water level
-   - Average water level
-   - Total readings count
-
-5. **Trend Chart**
-   - Line chart showing water level over time
-   - 30-second auto-refresh interval (when enabled)
-   - Manual refresh capability
-
-### Control Options
-
-- **Refresh Stats**: Update statistics data
-- **Clear Data**: Remove all stored readings
-- **Enable Auto-Refresh**: Auto-update charts every 2 seconds
-
-## Usage Example
-
-### 1. Start the Server
-
-```bash
-cd server
-python app.py
+```json
+{
+  "device_id": 1,
+  "water_level": 12.50,
+  "rise_rate": 0.0312,
+  "percentage": 31.25
+}
 ```
 
-Output:
+---
+
+## ML Model
+
+- **Algorithm**: RandomForestClassifier (200 estimators, balanced class weights)
+- **Features**: `water_level_node1`, `water_level_node2`, `level_diff`, `rise_rate_node1`, `rise_rate_node2`, `rain_hour`, `rain_intensity`
+- **Labels**: `normal` (0) · `blockage` (1) · `flood` (2) *(LabelEncoder alphabetical order)*
+- **Rule overrides**:
+  - Either node > 35 cm → **FLOOD**
+  - Both nodes > 30 cm → **FLOOD**
+  - Differential > 15 cm → **BLOCKAGE**
+  - Node1 rise > 2 cm/s AND Node2 rise < 0.5 → **BLOCKAGE**
+
+---
+
+## Folder Structure
+
 ```
-Water Level Monitoring Server
-==============================
-Starting Flask server on http://localhost:5000
-...
-Waiting for connections...
-```
-
-### 2. Upload Firmware to ESP32
-
-Ensure WiFi credentials are configured, then:
-```bash
-cd HC-SR04
-pio run -t upload
-```
-
-### 3. Access the Dashboard
-
-Open browser and navigate to:
-```
-http://localhost:5000
-```
-
-### 4. Monitor Data
-
-The dashboard will automatically:
-- Receive sensor readings every 5 seconds
-- Update all gauges and charts
-- Maintain historical data
-- Calculate statistics
-
-## Calibration
-
-### To Calibrate the Base Height:
-
-1. Measure the exact distance from the HC-SR04 sensor to the bottom of your container
-2. Update `BASE_HEIGHT_CM` in `src/main.cpp`:
-   ```cpp
-   #define BASE_HEIGHT_CM 40.0  // Update this value
-   ```
-3. Rebuild and upload firmware
-
-### Testing Calibration:
-
-1. With an empty container, the water level should read 0 cm
-2. Add water and verify the reading increases correctly
-
-## Troubleshooting
-
-### ESP32 Not Connecting to WiFi
-- Check SSID and password are correct
-- Verify WiFi supports 2.4GHz (ESP32 doesn't support 5GHz)
-- Check if ESP32 is in range
-
-### No Data Appearing on Dashboard
-- Verify Flask server is running
-- Check ESP32 serial output for errors
-- Ensure server URL is correct in firmware
-- Verify firewall isn't blocking port 5000
-
-### Inaccurate Readings
-- Check sensor is not obstructed
-- Verify HC-SR04 pins are securely connected
-- Ensure base height calibration is correct
-- Check for reflective surfaces interfering with ultrasonic signal
-
-### Server Port Already in Use
-```bash
-# On Windows, find and kill process on port 5000
-netstat -ano | findstr :5000
-taskkill /PID <PID> /F
+project/
+├── HC-SR04/
+│   ├── platformio.ini
+│   └── src/
+│       └── main.cpp
+│   └── lib/
+│       └── WaterLevel/
+│           ├── WaterLevel.h
+│           └── WaterLevel.cpp
+└── server/
+    ├── app.py
+    ├── dashboard.html
+    ├── requirements.txt
+    ├── model.joblib
+    ├── encoder.joblib
+    ├── .env
+    ├── README.md
+    └── SETUP.md
 ```
 
-## Performance Notes
+---
 
-- **Update Rate**: 5-second intervals (configurable)
-- **Data Points Stored**: Up to 1000 readings
-- **Response Time**: <100ms API response
-- **Gauge Update**: Real-time visual updates
+## Screenshots
 
-## Future Enhancements
+> Dashboard — Normal State
+> ![Normal](assets/placeholder-normal.png)
 
-- Database storage (SQLite/PostgreSQL)
-- Email/SMS alerts on threshold breach
-- Historical data export (CSV/JSON)
-- Multiple sensor support
-- Mobile app integration
-- Predictive analytics for water usage
+> Dashboard — Flood Alert
+> ![Flood](assets/placeholder-flood.png)
 
-## License
+> Dashboard — Blockage Alert
+> ![Flood](assets/placeholder-Blockage.png)
 
-MIT License - Feel free to use and modify for your projects
-
-## Support
-
-For issues or questions:
-1. Check the troubleshooting section
-2. Review serial monitor output
-3. Verify all connections
-4. Check API responses in browser console
+> Esp32 node 1 and node2 -HC-SR04
+> ![Flood](assets/system.jpg)
