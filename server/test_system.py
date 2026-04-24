@@ -1,241 +1,89 @@
 #!/usr/bin/env python3
 """
-Test script for Water Level Monitoring System
+FloodWatch — System Test Script
+Simulates two ESP32 devices sending data so you can test
+the server and dashboard without real hardware.
 
-This script simulates ESP32 devices sending water level data
-to test the server without actual hardware.
-
-Usage:
-    python test_system.py
+Usage:  python test_system.py
 """
 
-import requests
-import time
-import random
-from datetime import datetime, timedelta
-import json
+import requests, time, random, json
 
-# Configuration
-SERVER_URL = "http://localhost:5000"
-DEVICE_1_ID = 1
-DEVICE_2_ID = 2
+SERVER = "http://localhost:5000"
 
-# Simulate water levels (cm)
-DEVICE_1_WATER = 30.0
-DEVICE_2_WATER = 35.0
-RISE_RATE = 0.1
-
-def test_api_health():
-    """Test if server is running"""
+def check_server():
     try:
-        response = requests.get(f"{SERVER_URL}/api/latest")
-        if response.status_code == 200:
-            print("✅ Server is running and responding")
+        r = requests.get(f"{SERVER}/api/latest", timeout=3)
+        if r.status_code == 200:
+            print("✅ Server reachable")
             return True
-        else:
-            print(f"❌ Server returned status {response.status_code}")
-            return False
-    except requests.exceptions.ConnectionError:
-        print("❌ Cannot connect to server. Is it running on localhost:5000?")
-        return False
+    except:
+        pass
+    print("❌ Server not reachable. Start it first:  python app.py")
+    return False
 
-def send_sensor_data(device_id, water_level, rise_rate, percentage):
-    """Send sensor data to the server"""
-    data = {
-        "device_id": device_id,
-        "water_level": water_level,
-        "rise_rate": rise_rate,
-        "percentage": percentage
-    }
-    
+def send(device_id, wl, rr, pct):
+    payload = {"device_id": device_id, "water_level": wl, "rise_rate": rr, "percentage": pct}
     try:
-        response = requests.post(f"{SERVER_URL}/api/water-level", json=data)
-        if response.status_code == 200:
-            result = response.json()
-            print(f"✅ Device {device_id}: Water={water_level:.2f}cm, Rise={rise_rate:.3f}cm/s, Fill={percentage:.1f}%")
-            return True
-        else:
-            print(f"❌ Error sending data for Device {device_id}: {response.status_code}")
-            return False
+        r = requests.post(f"{SERVER}/api/water-level", json=payload, timeout=5)
+        ok = r.status_code == 200
+        tag = "✅" if ok else "❌"
+        print(f"  {tag} Device {device_id}: WL={wl:.2f}cm  RR={rr:.3f}cm/s  Fill={pct:.1f}%")
     except Exception as e:
-        print(f"❌ Exception: {str(e)}")
-        return False
+        print(f"  ❌ Error: {e}")
 
-def get_latest_data():
-    """Get latest data from server"""
+def test_prediction():
     try:
-        response = requests.get(f"{SERVER_URL}/api/latest")
-        if response.status_code == 200:
-            data = response.json()
-            print("\n📊 Latest Data:")
-            print(f"   Device 1: {data.get('device1', {}).get('water_level', 'N/A'):.2f} cm")
-            print(f"   Device 2: {data.get('device2', {}).get('water_level', 'N/A'):.2f} cm")
-            print(f"   Difference: {data.get('level_difference', 0):.2f} cm")
-            
-            if data.get('weather'):
-                weather = data['weather']
-                print(f"   Rain: {weather.get('rain_mm', 0):.1f} mm")
-                print(f"   Rain Probability: {weather.get('rain_hour', 0):.1f}%")
-            
-            if data.get('prediction'):
-                pred = data['prediction']
-                print(f"   Flood Risk: {pred.get('flood_prediction', 'UNKNOWN')}")
-                print(f"   Blockage Risk: {pred.get('blockage_prediction', 'UNKNOWN')}")
-            
-            return True
-        else:
-            print(f"❌ Error fetching latest data: {response.status_code}")
-            return False
+        r = requests.get(f"{SERVER}/api/predict", timeout=5)
+        d = r.json()
+        print(f"\n  🤖 Prediction: {d.get('condition','?')}  (WL1={d.get('WL1',0):.1f}  WL2={d.get('WL2',0):.1f}  diff={d.get('difference',0):.1f})")
     except Exception as e:
-        print(f"❌ Exception: {str(e)}")
-        return False
+        print(f"  ❌ Predict error: {e}")
 
-def get_device_stats(device_id):
-    """Get statistics for a device"""
-    try:
-        response = requests.get(f"{SERVER_URL}/api/device/{device_id}/stats")
-        if response.status_code == 200:
-            data = response.json()
-            if data.get('stats'):
-                stats = data['stats']
-                print(f"\n📈 Device {device_id} Statistics:")
-                print(f"   Readings: {stats.get('count', 0)}")
-                print(f"   Avg Level: {stats.get('avg_level', 0):.2f} cm")
-                print(f"   Min Level: {stats.get('min_level', 0):.2f} cm")
-                print(f"   Max Level: {stats.get('max_level', 0):.2f} cm")
-                return True
-        return False
-    except Exception as e:
-        print(f"❌ Exception: {str(e)}")
-        return False
-
-def get_weather():
-    """Get current weather"""
-    try:
-        response = requests.get(f"{SERVER_URL}/api/weather")
-        if response.status_code == 200:
-            data = response.json()
-            weather = data.get('data', {})
-            print(f"\n🌧️  Weather Data:")
-            print(f"   Rain: {weather.get('rain_mm', 0):.1f} mm")
-            print(f"   Probability: {weather.get('rain_hour', 0):.1f}%")
-            print(f"   Temperature: {weather.get('temperature', 0):.1f}°C")
-            print(f"   Humidity: {weather.get('humidity', 0):.1f}%")
-            return True
-        return False
-    except Exception as e:
-        print(f"❌ Exception: {str(e)}")
-        return False
-
-def get_prediction():
-    """Get flood/blockage prediction"""
-    try:
-        response = requests.post(f"{SERVER_URL}/api/predict")
-        if response.status_code == 200:
-            data = response.json()
-            pred = data.get('prediction', {})
-            print(f"\n⚠️  Prediction Results:")
-            print(f"   Flood Risk: {pred.get('flood_risk', 'UNKNOWN')}")
-            print(f"   Flood Probability: {pred.get('flood_probability', 0)*100:.1f}%")
-            print(f"   Blockage Risk: {pred.get('blockage_risk', 'UNKNOWN')}")
-            print(f"   Blockage Probability: {pred.get('blockage_probability', 0)*100:.1f}%")
-            return True
-        return False
-    except Exception as e:
-        print(f"❌ Exception: {str(e)}")
-        return False
-
-def simulate_continuous_data(duration_seconds=30, interval=2):
-    """Simulate continuous sensor data for testing"""
-    global DEVICE_1_WATER, DEVICE_2_WATER
-    
-    start_time = time.time()
-    count = 0
-    
-    print(f"\n🔄 Simulating sensor data for {duration_seconds} seconds...")
-    print(f"   Sending data every {interval} seconds\n")
-    
-    while time.time() - start_time < duration_seconds:
-        # Simulate rising water levels
-        DEVICE_1_WATER += random.uniform(-0.2, 0.5)
-        DEVICE_2_WATER += random.uniform(-0.2, 0.5)
-        
-        # Keep within bounds
-        DEVICE_1_WATER = max(0, min(100, DEVICE_1_WATER))
-        DEVICE_2_WATER = max(0, min(100, DEVICE_2_WATER))
-        
-        # Calculate rise rates and percentages
-        rise_rate_1 = random.uniform(0.0, 0.5)
-        rise_rate_2 = random.uniform(0.0, 0.5)
-        percentage_1 = (DEVICE_1_WATER / 100) * 100
-        percentage_2 = (DEVICE_2_WATER / 100) * 100
-        
-        # Send data
-        send_sensor_data(DEVICE_1_ID, DEVICE_1_WATER, rise_rate_1, percentage_1)
-        send_sensor_data(DEVICE_2_ID, DEVICE_2_WATER, rise_rate_2, percentage_2)
-        
-        count += 2
+def simulate(seconds=60, interval=3):
+    wl1, wl2 = 20.0, 18.0
+    print(f"\n🔄 Simulating for {seconds}s (Ctrl+C to stop)...\n")
+    t0 = time.time()
+    while time.time() - t0 < seconds:
+        wl1 = max(0, min(100, wl1 + random.uniform(-0.3, 0.6)))
+        wl2 = max(0, min(100, wl2 + random.uniform(-0.3, 0.5)))
+        send(1, wl1, random.uniform(0, 0.8), wl1)
+        send(2, wl2, random.uniform(0, 0.6), wl2)
+        test_prediction()
         time.sleep(interval)
-    
-    print(f"\n✅ Sent {count} data points in {duration_seconds} seconds")
 
-def main():
-    """Main test function"""
-    print("=" * 60)
-    print("Water Level Monitoring System - Test Suite")
-    print("=" * 60)
-    
-    # Test 1: Check server health
-    print("\n[1/6] Testing server connection...")
-    if not test_api_health():
-        print("\n❌ Cannot connect to server. Please start the server first:")
-        print("   cd c:\\Users\\mayur\\Project\\server")
-        print("   python app.py")
-        return
-    
-    # Test 2: Send sample data
-    print("\n[2/6] Sending sample sensor data...")
-    send_sensor_data(DEVICE_1_ID, 45.2, 0.5, 75.0)
-    send_sensor_data(DEVICE_2_ID, 38.5, 0.3, 65.0)
-    
-    time.sleep(1)
-    
-    # Test 3: Get latest data
-    print("\n[3/6] Fetching latest data...")
-    get_latest_data()
-    
-    # Test 4: Get device statistics
-    print("\n[4/6] Getting device statistics...")
-    get_device_stats(DEVICE_1_ID)
-    
-    # Test 5: Get weather (if API is configured)
-    print("\n[5/6] Fetching weather data...")
-    get_weather()
-    
-    # Test 6: Get predictions
-    print("\n[6/6] Getting predictions...")
-    get_prediction()
-    
-    # Optional: Simulate continuous data
-    print("\n" + "=" * 60)
-    response = input("Simulate continuous sensor data? (y/n): ").lower()
-    if response == 'y':
-        duration = input("Duration in seconds (default 30): ")
+if __name__ == '__main__':
+    print("=" * 50)
+    print("  FloodWatch — Test Suite")
+    print("=" * 50)
+
+    if not check_server():
+        exit(1)
+
+    print("\n[1] Sending baseline data...")
+    send(1, 22.5, 0.12, 22.5)
+    send(2, 19.8, 0.05, 19.8)
+
+    print("\n[2] Simulating BLOCKAGE (large diff)...")
+    send(1, 38.0, 2.5, 38.0)
+    send(2,  5.0, 0.1,  5.0)
+    test_prediction()
+
+    print("\n[3] Simulating FLOOD (both high)...")
+    send(1, 42.0, 1.8, 42.0)
+    send(2, 38.0, 1.5, 38.0)
+    test_prediction()
+
+    print("\n[4] Back to NORMAL...")
+    send(1, 18.0, 0.1, 18.0)
+    send(2, 17.5, 0.1, 17.5)
+    test_prediction()
+
+    ans = input("\nRun continuous simulation? (y/n): ").strip().lower()
+    if ans == 'y':
         try:
-            duration = int(duration)
-        except:
-            duration = 30
-        simulate_continuous_data(duration, interval=2)
-    
-    print("\n" + "=" * 60)
-    print("✅ Test completed!")
-    print("\nAccess the dashboard at: http://localhost:5000")
-    print("=" * 60)
+            simulate(seconds=120, interval=3)
+        except KeyboardInterrupt:
+            print("\n⚠️  Stopped.")
 
-if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        print("\n\n⚠️  Test interrupted by user")
-    except Exception as e:
-        print(f"\n❌ Unexpected error: {str(e)}")
+    print(f"\n✅ Done. Dashboard: {SERVER}\n")
