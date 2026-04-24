@@ -125,11 +125,11 @@ project/
 ## Screenshots
 
 > Dashboard — Normal State
-> ![Normal](server/assets/placeholder-normal.png)
+> ![Normal](assets/placeholder-normal.png)
 
 > Dashboard — Flood Alert
-> ![Flood](server/assets/placeholder-flood.png)
+> ![Flood](assets/placeholder-flood.png)
 
 > Dashboard — Blockage Alert
-> ![Flood](server/assets/placeholder-Blockage.png)
+> ![Flood](assets/placeholder-Blockage.png)
 
