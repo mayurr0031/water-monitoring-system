@@ -13,7 +13,7 @@ import mysql.connector
 import pandas as pd
 import requests
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 from mysql.connector import Error
 
@@ -61,6 +61,9 @@ ML_FEATURES = [
 ]
 
 db_lock = Lock()
+
+# How old a sensor/weather row can be before it's treated as stale
+STALE_THRESHOLD_SECONDS = 30
 
 # ─────────────────────────────────────────────
 # LOAD ML MODEL
@@ -120,6 +123,20 @@ def _serialize(row):
         else:
             out[k] = v
     return out
+
+
+def is_stale(row) -> bool:
+    """
+    Return True if the row is missing or its timestamp is older than
+    STALE_THRESHOLD_SECONDS.  Handles both raw datetime objects (straight
+    from the MySQL cursor) and ISO strings (after _serialize()).
+    """
+    if not row or not row.get("timestamp"):
+        return True
+    ts = row["timestamp"]
+    if isinstance(ts, str):
+        ts = datetime.fromisoformat(ts)
+    return (datetime.now() - ts).total_seconds() > STALE_THRESHOLD_SECONDS
 
 
 def init_database():
@@ -287,7 +304,13 @@ def get_latest_weather() -> dict:
                 "FROM weather_data ORDER BY timestamp DESC LIMIT 1"
             )
             row = cursor.fetchone()
-            return _serialize(row) if row else _DUMMY_WEATHER.copy()
+            if not row:
+                return _DUMMY_WEATHER.copy()
+            # Return dummy values if the last weather fetch is stale
+            if is_stale(row):
+                log.debug("Weather row is stale — returning dummy weather")
+                return _DUMMY_WEATHER.copy()
+            return _serialize(row)
         finally:
             cursor.close()
             conn.close()
@@ -373,12 +396,6 @@ def store_prediction(wl1, wl2, rise1, rise2, rain_mm, rain_hour, condition, floo
 # ROUTES
 # ─────────────────────────────────────────────
 
-
-@app.route("/")
-def index():
-    return render_template("dashboard.html")
-
-
 @app.route("/api/water-level", methods=["POST"])
 def receive_water_level():
     """Receive JSON from ESP32 and store in DB. Triggers prediction on every insert."""
@@ -422,7 +439,11 @@ def receive_water_level():
 
 
 def _run_prediction_async():
-    """Fetch both devices and compute + store a prediction. Called after each sensor insert."""
+    """
+    Fetch both devices and compute + store a prediction.
+    Called after each sensor insert.
+    Skips prediction entirely if either device row is stale (device offline).
+    """
     try:
         with db_lock:
             conn = get_db_connection()
@@ -431,15 +452,22 @@ def _run_prediction_async():
             cursor = conn.cursor(dictionary=True)
             _use_db(cursor)
             cursor.execute(
-                "SELECT water_level, rise_rate FROM sensor_readings WHERE device_id=1 ORDER BY timestamp DESC LIMIT 1"
+                "SELECT water_level, rise_rate, timestamp FROM sensor_readings "
+                "WHERE device_id=1 ORDER BY timestamp DESC LIMIT 1"
             )
-            d1 = cursor.fetchone() or {"water_level": 0, "rise_rate": 0}
+            d1 = cursor.fetchone()
             cursor.execute(
-                "SELECT water_level, rise_rate FROM sensor_readings WHERE device_id=2 ORDER BY timestamp DESC LIMIT 1"
+                "SELECT water_level, rise_rate, timestamp FROM sensor_readings "
+                "WHERE device_id=2 ORDER BY timestamp DESC LIMIT 1"
             )
-            d2 = cursor.fetchone() or {"water_level": 0, "rise_rate": 0}
+            d2 = cursor.fetchone()
             cursor.close()
             conn.close()
+
+        # Do not run prediction if either node is offline / stale
+        if is_stale(d1) or is_stale(d2):
+            log.debug("Skipping prediction — one or both sensor nodes are stale")
+            return
 
         weather = get_latest_weather()
         cond, fp, bp, ml = compute_prediction(
@@ -478,6 +506,13 @@ def get_latest_data():
             d1 = latest_device(1)
             d2 = latest_device(2)
 
+            # Nullify stale device data so the dashboard shows '—' instead of
+            # re-displaying the last known value when a node goes offline
+            if is_stale(d1):
+                d1 = None
+            if is_stale(d2):
+                d2 = None
+
             cursor.execute(
                 "SELECT rain_mm, rain_hour, temperature, humidity, timestamp "
                 "FROM weather_data ORDER BY timestamp DESC LIMIT 1"
@@ -489,6 +524,10 @@ def get_latest_data():
                 "FROM predictions ORDER BY timestamp DESC LIMIT 1"
             )
             pred = _serialize(cursor.fetchone())
+
+            # If the latest prediction is stale (no live data), clear it too
+            if is_stale(pred):
+                pred = None
 
             level_diff = 0.0
             if d1 and d2:
@@ -560,18 +599,27 @@ def predict_endpoint():
         try:
             _use_db(cursor)
             cursor.execute(
-                "SELECT water_level, rise_rate FROM sensor_readings WHERE device_id=1 ORDER BY timestamp DESC LIMIT 1"
+                "SELECT water_level, rise_rate, timestamp FROM sensor_readings "
+                "WHERE device_id=1 ORDER BY timestamp DESC LIMIT 1"
             )
-            d1 = cursor.fetchone() or {"water_level": 0, "rise_rate": 0}
+            d1 = cursor.fetchone()
             cursor.execute(
-                "SELECT water_level, rise_rate FROM sensor_readings WHERE device_id=2 ORDER BY timestamp DESC LIMIT 1"
+                "SELECT water_level, rise_rate, timestamp FROM sensor_readings "
+                "WHERE device_id=2 ORDER BY timestamp DESC LIMIT 1"
             )
-            d2 = cursor.fetchone() or {"water_level": 0, "rise_rate": 0}
+            d2 = cursor.fetchone()
         except Error as e:
             return jsonify({"error": str(e)}), 500
         finally:
             cursor.close()
             conn.close()
+
+    # Refuse to predict if nodes are offline
+    if is_stale(d1) or is_stale(d2):
+        return jsonify({
+            "status": "offline",
+            "message": "One or both sensor nodes are offline or stale. Cannot predict.",
+        }), 200
 
     weather = fetch_weather_data()
     store_weather_data(weather)

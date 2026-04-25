@@ -62,7 +62,7 @@ void loop() {
 
             // Create JSON
             String jsonData = "{";
-               jsonData += "\"device_id\":2,";
+               jsonData += "\"device_id\":1,";
                jsonData += "\"water_level\":" + String(waterLevel, 2) + ",";
                jsonData += "\"rise_rate\":" + String(riseRate, 4) + ",";
                jsonData += "\"percentage\":" + String(percentage, 2);
