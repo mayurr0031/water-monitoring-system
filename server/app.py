@@ -13,7 +13,7 @@ import mysql.connector
 import pandas as pd
 import requests
 from dotenv import load_dotenv
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, render_template
 from flask_cors import CORS
 from mysql.connector import Error
 
@@ -395,6 +395,9 @@ def store_prediction(wl1, wl2, rise1, rise2, rain_mm, rain_hour, condition, floo
 # ─────────────────────────────────────────────
 # ROUTES
 # ─────────────────────────────────────────────
+@app.route("/")
+def index():
+    return render_template("dashboard.html")
 
 @app.route("/api/water-level", methods=["POST"])
 def receive_water_level():
