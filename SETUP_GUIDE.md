@@ -48,11 +48,24 @@ EXIT;
 ## Step 4 — Train the ML Model
 
 ```bash
-# Run the training notebook or script:
-jupyter notebook Untitled1.ipynb
-# Execute all cells.
-# This produces:  model.joblib  and  encoder.joblib
-# Copy both files into the server/ folder.
+# Run the training notebook (interactive):
+jupyter notebook model_training/phase1_model_training.ipynb
+# Or launch JupyterLab:
+# jupyter lab
+
+# Execute all notebook cells to train the model. The training produces:
+#   model_training/manhole_model_output/model.joblib
+#   model_training/manhole_model_output/encoder.joblib
+
+# Copy the produced artifacts into the server/ folder so the Flask app can load them:
+cp model_training/manhole_model_output/model.joblib server/model.joblib
+cp model_training/manhole_model_output/encoder.joblib server/encoder.joblib
+```
+
+If you prefer a non-interactive run, you can execute a Python training script (if available) or use `nbconvert` to run the notebook end-to-end:
+
+```bash
+jupyter nbconvert --to notebook --execute model_training/phase1_model_training.ipynb --output /dev/null
 ```
 
 ---

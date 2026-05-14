@@ -97,6 +97,14 @@ Real-time flood and drainage-blockage detection using ESP32 ultrasonic sensors, 
 
 ---
 
+## Model Training
+
+- The training workflow and notebooks live in the `model_training/` folder. The primary notebook is `phase1_model_training.ipynb` which produces the trained model and encoder artifacts.
+- Trained artifacts are saved to `model_training/manhole_model_output/` as `model.joblib` and `encoder.joblib` (and optionally `dataset.csv` for reproducibility).
+- After training, copy `model.joblib` and `encoder.joblib` into the `server/` folder so the Flask app can load them at runtime. The repository also contains example copies at `server/model.joblib` and `server/encoder.joblib` used for testing.
+
+---
+
 ## Folder Structure
 
 ```
@@ -109,15 +117,20 @@ project/
 │       └── WaterLevel/
 │           ├── WaterLevel.h
 │           └── WaterLevel.cpp
-└── server/
-    ├── app.py
-    ├── dashboard.html
-    ├── requirements.txt
-    ├── model.joblib
+├── server/
+│   ├── app.py
+│   ├── dashboard.html
+│   ├── requirements.txt
+│   ├── model.joblib        # runtime model (copy from model_training/manhole_model_output)
+│   ├── encoder.joblib      # runtime encoder (copy from model_training/manhole_model_output)
+│   ├── .env
+│   └── SETUP.md
+└── model_training/
+  ├── phase1_model_training.ipynb
+  └── manhole_model_output/
+    ├── dataset.csv
     ├── encoder.joblib
-    ├── .env
-    ├── README.md
-    └── SETUP.md
+    └── model.joblib
 ```
 
 ---
