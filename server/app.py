@@ -257,7 +257,31 @@ def fetch_weather_data() -> dict:
         )
         resp.raise_for_status()
         data = resp.json()
-        vals = data.get("data", {}).get("values", {})
+        # Tomorrow.io may return different shapes depending on endpoint/version.
+        # Prefer `data.values` but fall back to `timelines` -> intervals -> values.
+        data_block = data.get("data", {})
+        vals = data_block.get("values") or {}
+
+        # Support the `timelines` response (e.g. /timelines endpoint)
+        if not vals:
+            timelines = data_block.get("timelines")
+            if timelines and isinstance(timelines, list):
+                try:
+                    first = timelines[0]
+                    intervals = first.get("intervals")
+                    if intervals and isinstance(intervals, list):
+                        vals = intervals[0].get("values", {}) or {}
+                except Exception:
+                    vals = {}
+
+        # As a last resort, if the top-level `data` itself contains metric keys
+        # (some API variants), treat `data` as the values block.
+        if not vals and any(k in data_block for k in ("temperature", "humidity", "precipitationIntensity", "precipitationProbability")):
+            vals = data_block
+
+        if not vals:
+            log.debug(f"Unexpected weather response shape, keys: {list(data.keys())}")
+
         return {
             "rain_mm": float(vals.get("precipitationIntensity", 0)),
             "rain_hour": float(vals.get("precipitationProbability", 0)),

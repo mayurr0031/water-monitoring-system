@@ -294,8 +294,16 @@ header {
       </div>
       <div class="metric-card">
         <div class="device-tag">Rise Rate</div>
-        <div class="value"><span id="rr1">—</span><span class="unit">cm/s</span></div>
-        <div class="label">Node 1 rate &nbsp;|&nbsp; <span id="rr2">—</span> cm/s Node 2</div>
+        <div class="value" style="display:flex;flex-direction:column;gap:18px;align-items:baseline;">
+          <div style="text-align:center;min-width:88px;">
+            <div style="font-family:var(--mono);font-size:28px;font-weight:700;"><span id="rr1">—</span></div>
+            <div style="font-size:12px;color:var(--muted);">Node 1 <span class="unit">cm/s</span></div>
+          </div>
+          <div style="text-align:center;min-width:88px;">
+            <div style="font-family:var(--mono);font-size:28px;font-weight:700;"><span id="rr2">—</span></div>
+            <div style="font-size:12px;color:var(--muted);">Node 2 <span class="unit">cm/s</span></div>
+          </div>
+        </div>
       </div>
       <div class="metric-card">
         <div class="device-tag">Level Differential</div>
