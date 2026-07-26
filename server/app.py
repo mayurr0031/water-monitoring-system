@@ -98,6 +98,24 @@ def decode_label(idx: int) -> str:
 # DATABASE HELPERS
 # ─────────────────────────────────────────────
 
+RL_VALUE = 1.0       # Load resistance in kilo-ohms
+R0_BASELINE = 10.0   # Calibrated clean-air R0 value
+A_MULTIPLIER = 1012.7
+B_EXPONENT = -2.786
+
+
+def convert_mv_to_ppm(millivolts: float) -> float:
+    vs = float(millivolts) / 1000.0
+    if vs >= 5.0:
+        vs = 4.99
+    if vs <= 0.0:
+        vs = 0.01
+
+    rs = ((5.0 - vs) / vs) * RL_VALUE
+    ratio = rs / R0_BASELINE
+    ppm = A_MULTIPLIER * (ratio ** B_EXPONENT)
+    return float(ppm)
+
 
 def get_db_connection():
     try:
@@ -165,6 +183,10 @@ def init_database():
                 water_level FLOAT        NOT NULL,
                 rise_rate   FLOAT        NOT NULL DEFAULT 0,
                 percentage  FLOAT        NOT NULL DEFAULT 0,
+                mq4_1       FLOAT        NOT NULL DEFAULT 0,
+                mq135_1     FLOAT        NOT NULL DEFAULT 0,
+                mq4_2       FLOAT        NOT NULL DEFAULT 0,
+                mq135_2     FLOAT        NOT NULL DEFAULT 0,
                 timestamp   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 INDEX idx_device_ts (device_id, timestamp)
             )
@@ -207,6 +229,23 @@ def init_database():
                 try:
                     cursor.execute(ddl)
                     log.info(f"Migration: added column '{col}' to predictions")
+                except Error as me:
+                    log.warning(f"Migration skipped ({col}): {me}")
+
+        sensor_migrations = [
+            ("mq4_1",   "ALTER TABLE sensor_readings ADD COLUMN mq4_1 FLOAT NOT NULL DEFAULT 0 AFTER percentage"),
+            ("mq135_1", "ALTER TABLE sensor_readings ADD COLUMN mq135_1 FLOAT NOT NULL DEFAULT 0 AFTER mq4_1"),
+            ("mq4_2",   "ALTER TABLE sensor_readings ADD COLUMN mq4_2 FLOAT NOT NULL DEFAULT 0 AFTER mq135_1"),
+            ("mq135_2", "ALTER TABLE sensor_readings ADD COLUMN mq135_2 FLOAT NOT NULL DEFAULT 0 AFTER mq4_2"),
+        ]
+        cursor.execute("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=%s AND TABLE_NAME='sensor_readings'",
+                       (DB_CONFIG['database'],))
+        existing_sensor_cols = {r[0] for r in cursor.fetchall()}
+        for col, ddl in sensor_migrations:
+            if col not in existing_sensor_cols:
+                try:
+                    cursor.execute(ddl)
+                    log.info(f"Migration: added column '{col}' to sensor_readings")
                 except Error as me:
                     log.warning(f"Migration skipped ({col}): {me}")
 
@@ -434,9 +473,22 @@ def receive_water_level():
     water_level = data.get("water_level")
     rise_rate = data.get("rise_rate", 0.0)
     percentage = data.get("percentage", 0.0)
+    mq4_mv = data.get("mq4_mv", 0.0)
+    mq135_mv = data.get("mq135_mv", 0.0)
 
     if device_id is None or water_level is None:
         return jsonify({"error": "Missing device_id or water_level"}), 400
+
+    mq4_1 = mq135_1 = mq4_2 = mq135_2 = 0.0
+    mq4_ppm = convert_mv_to_ppm(mq4_mv)
+    mq135_ppm = convert_mv_to_ppm(mq135_mv)
+
+    if int(device_id) == 1:
+        mq4_1 = mq4_ppm
+        mq135_1 = mq135_ppm
+    elif int(device_id) == 2:
+        mq4_2 = mq4_ppm
+        mq135_2 = mq135_ppm
 
     with db_lock:
         conn = get_db_connection()
@@ -446,8 +498,17 @@ def receive_water_level():
         try:
             _use_db(cursor)
             cursor.execute(
-                "INSERT INTO sensor_readings (device_id, water_level, rise_rate, percentage) VALUES (%s,%s,%s,%s)",
-                (device_id, float(water_level), float(rise_rate), float(percentage)),
+                "INSERT INTO sensor_readings (device_id, water_level, rise_rate, percentage, mq4_1, mq135_1, mq4_2, mq135_2) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+                (
+                    int(device_id),
+                    float(water_level),
+                    float(rise_rate),
+                    float(percentage),
+                    mq4_1,
+                    mq135_1,
+                    mq4_2,
+                    mq135_2,
+                ),
             )
             conn.commit()
         except Error as e:
