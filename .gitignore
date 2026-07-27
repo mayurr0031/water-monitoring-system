@@ -118,7 +118,6 @@ dmypy.json
 .DS_Store
 *.o
 *.a
-*.lib
 *.so
 *.dylib
 *.dll
