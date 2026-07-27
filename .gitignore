@@ -15,6 +15,9 @@ downloads/
 eggs/
 .eggs/
 lib/
+!esp-firmware/HC-SR04/lib/
+!esp-firmware/HC-SR04/lib/WaterLevel/
+!esp-firmware/HC-SR04/lib/WaterLevel/**
 lib64/
 parts/
 sdist/
@@ -118,6 +121,7 @@ dmypy.json
 .DS_Store
 *.o
 *.a
+*.lib
 *.so
 *.dylib
 *.dll
