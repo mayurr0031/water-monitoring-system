@@ -109,7 +109,7 @@ void loop() {
             float mq135Ppm = convertMvToPpm(gasReadings.mq135Mv);
 
             String jsonData = "{";
-               jsonData += "\"device_id\":" + String(2) + ",";
+               jsonData += "\"device_id\":" + String(1) + ",";
                jsonData += "\"water_level\":" + String(waterLevel, 2) + ",";
                jsonData += "\"rise_rate\":" + String(riseRate, 4) + ",";
                jsonData += "\"percentage\":" + String(percentage, 2) + ",";
