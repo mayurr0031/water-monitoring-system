@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from threading import Lock
+from threading import RLock
 
 import mysql.connector
 from mysql.connector import Error
@@ -8,7 +8,7 @@ from mysql.connector import Error
 from config import DB_CONFIG, STALE_THRESHOLD_SECONDS
 
 log = logging.getLogger(__name__)
-db_lock = Lock()
+db_lock = RLock()
 
 
 def get_db_connection():
@@ -140,16 +140,28 @@ def init_database():
                 except Error as exc:
                     log.warning(f"Migration skipped ({column}): {exc}")
 
+        # Old single-row-per-fetch weather table — replaced by weather_forecast below.
+        cursor.execute("DROP TABLE IF EXISTS weather_data")
+
+        # One row per forecast hour (24 rows per sync). `forecast_time` is the
+        # hour the row describes (the "T12:00 value" the user asked about);
+        # `fetched_at` is when we pulled that row from the API. Re-syncing
+        # upserts on `forecast_time` so we always keep exactly one row per hour.
         cursor.execute(
             """
-            CREATE TABLE IF NOT EXISTS weather_data (
-                id          INT AUTO_INCREMENT PRIMARY KEY,
-                rain_mm     FLOAT NOT NULL DEFAULT 0,
-                rain_hour   FLOAT NOT NULL DEFAULT 0,
-                temperature FLOAT NOT NULL DEFAULT 0,
-                humidity    FLOAT NOT NULL DEFAULT 0,
-                timestamp   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                INDEX idx_ts (timestamp)
+            CREATE TABLE IF NOT EXISTS weather_forecast (
+                id                          INT AUTO_INCREMENT PRIMARY KEY,
+                forecast_time               DATETIME NOT NULL,
+                humidity                    FLOAT NOT NULL DEFAULT 0,
+                precipitation_intensity     FLOAT NOT NULL DEFAULT 0,
+                precipitation_probability   FLOAT NOT NULL DEFAULT 0,
+                rain_accumulation           FLOAT NOT NULL DEFAULT 0,
+                temperature                 FLOAT NOT NULL DEFAULT 0,
+                weather_code                INT   NOT NULL DEFAULT 0,
+                wind_speed                  FLOAT NOT NULL DEFAULT 0,
+                fetched_at                  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_forecast_time (forecast_time),
+                INDEX idx_forecast_time (forecast_time)
             )
             """
         )

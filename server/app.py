@@ -3,10 +3,10 @@
 from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
 
-from config import DB_CONFIG, log
+from config import DB_CONFIG, LOCATION_LAT, LOCATION_LON, log
 from db import db_lock, get_db_connection, init_database, is_stale, serialize_row
 from prediction import compute_prediction, store_prediction
-from weather import fetch_weather_data, get_latest_weather, start_weather_sync_loop, store_weather_data
+from weather import get_closest_weather, get_forecast, start_weather_sync_loop, sync_weather_forecast
 
 
 def create_app() -> Flask:
@@ -126,7 +126,7 @@ def create_app() -> Flask:
                 log.debug("Skipping prediction — one or both sensor nodes are stale")
                 return
 
-            weather = get_latest_weather()
+            weather = get_closest_weather()
             cond, fp, bp, ml = compute_prediction(
                 float(d1["water_level"]),
                 float(d2["water_level"]),
@@ -188,12 +188,6 @@ def create_app() -> Flask:
                     d2 = None
 
                 cursor.execute(
-                    "SELECT rain_mm, rain_hour, temperature, humidity, timestamp "
-                    "FROM weather_data ORDER BY timestamp DESC LIMIT 1"
-                )
-                weather = serialize_row(cursor.fetchone())
-
-                cursor.execute(
                     "SELECT condition_label, flood_probability, blockage_probability, ml_label, timestamp "
                     "FROM predictions ORDER BY timestamp DESC LIMIT 1"
                 )
@@ -205,21 +199,23 @@ def create_app() -> Flask:
                 level_diff = 0.0
                 if d1 and d2:
                     level_diff = round(abs(d1["water_level"] - d2["water_level"]), 2)
-
-                return jsonify({
-                    "status": "ok",
-                    "device1": d1,
-                    "device2": d2,
-                    "level_difference": level_diff,
-                    "weather": weather,
-                    "prediction": pred,
-                }), 200
             except Exception as exc:
                 log.error(f"get_latest_data: {exc}")
                 return jsonify({"error": "DB error"}), 500
             finally:
                 cursor.close()
                 conn.close()
+
+        weather = get_closest_weather()
+
+        return jsonify({
+            "status": "ok",
+            "device1": d1,
+            "device2": d2,
+            "level_difference": level_diff,
+            "weather": weather,
+            "prediction": pred,
+        }), 200
 
     @app.route("/api/history", methods=["GET"])
     def get_history():
@@ -295,8 +291,7 @@ def create_app() -> Flask:
                 "message": "One or both sensor nodes are offline or stale. Cannot predict.",
             }), 200
 
-        weather = fetch_weather_data()
-        store_weather_data(weather)
+        weather = get_closest_weather()
 
         wl1, wl2 = float(d1["water_level"]), float(d2["water_level"])
         r1, r2 = float(d1["rise_rate"]), float(d2["rise_rate"])
@@ -353,35 +348,26 @@ def create_app() -> Flask:
 
     @app.route("/api/weather", methods=["GET"])
     def weather_endpoint():
-        with db_lock:
-            conn = get_db_connection()
-            if not conn:
-                return jsonify({"error": "DB unavailable"}), 500
-            cursor = conn.cursor(dictionary=True)
-            try:
-                from db import _use_db
+        """24-hour hourly forecast, one entry per hour, soonest first."""
+        lat = request.args.get("lat")
+        lon = request.args.get("lon")
+        location = f"{LOCATION_LAT},{LOCATION_LON}"
 
-                _use_db(cursor)
-                cursor.execute(
-                    "SELECT rain_mm, rain_hour, temperature, humidity, timestamp "
-                    "FROM weather_data ORDER BY timestamp DESC LIMIT 24"
-                )
-                rows = [serialize_row(row) for row in cursor.fetchall()]
-            except Exception as exc:
-                log.error(f"weather_endpoint DB error: {exc}")
-                return jsonify({"error": "DB error"}), 500
-            finally:
-                cursor.close()
-                conn.close()
+        if lat and lon:
+            location = f"{lat},{lon}"
 
-        if rows:
-            latest = rows[0]
-            forecast = list(reversed(rows))
-            return jsonify({"status": "ok", "data": latest, "forecast": forecast}), 200
+        try:
+            forecast = get_forecast(location_lat=lat, location_lon=lon)
+        except Exception as exc:
+            log.error(f"weather_endpoint error: {exc}")
+            return jsonify({"error": "DB error"}), 500
 
-        weather = fetch_weather_data()
-        store_weather_data(weather)
-        return jsonify({"status": "ok", "data": weather, "forecast": [weather]}), 200
+        return jsonify({
+            "status": "success",
+            "location": location,
+            "forecastCount": len(forecast),
+            "forecast": forecast,
+        }), 200
 
     @app.route("/api/reset", methods=["POST"])
     def reset_data():
@@ -394,7 +380,7 @@ def create_app() -> Flask:
                 from db import _use_db
 
                 _use_db(cursor)
-                for table_name in ("sensor_readings", "predictions", "weather_data"):
+                for table_name in ("sensor_readings", "predictions", "weather_forecast"):
                     cursor.execute(f"DELETE FROM {table_name}")
                 conn.commit()
                 log.warning("All data reset by user request")
@@ -416,8 +402,9 @@ if __name__ == "__main__":
     print("=" * 55)
     print("  IoT Flood Monitoring System — Flask Server")
     init_database()
+    sync_weather_forecast()
     print(f"  DB   : {DB_CONFIG['database']}@{DB_CONFIG['host']}")
     print(f"  ML   : {'✓ loaded' if __import__('prediction').model else '✗ not loaded (rule-based only)'}")
     print("  URL  : http://0.0.0.0:5000")
     print("=" * 55)
-    app.run(debug=False, host="0.0.0.0", port=5000)
+    app.run(debug=False, host="0.0.0.0", port=5000, threaded=True)
