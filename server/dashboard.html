@@ -306,6 +306,31 @@ header {
         </div>
       </div>
       <div class="metric-card">
+        <div class="device-tag">MQ Sensors</div>
+        <div class="value" style="display:flex;flex-direction:column;gap:10px;align-items:baseline;font-size:24px;">
+          <div style="display:flex;justify-content:space-between;gap:12px;width:100%;">
+            <div>
+              <div style="font-family:var(--mono);font-size:20px;font-weight:700;"><span id="mq4-1">—</span></div>
+              <div style="font-size:11px;color:var(--muted);">N1 MQ4 ppm</div>
+            </div>
+            <div>
+              <div style="font-family:var(--mono);font-size:20px;font-weight:700;"><span id="mq135-1">—</span></div>
+              <div style="font-size:11px;color:var(--muted);">N1 MQ135 ppm</div>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:12px;width:100%;">
+            <div>
+              <div style="font-family:var(--mono);font-size:20px;font-weight:700;"><span id="mq4-2">—</span></div>
+              <div style="font-size:11px;color:var(--muted);">N2 MQ4 ppm</div>
+            </div>
+            <div>
+              <div style="font-family:var(--mono);font-size:20px;font-weight:700;"><span id="mq135-2">—</span></div>
+              <div style="font-size:11px;color:var(--muted);">N2 MQ135 ppm</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="metric-card">
         <div class="device-tag">Level Differential</div>
         <div class="value"><span id="diff">—</span><span class="unit">cm</span></div>
         <div class="label">Between Node 1 &amp; 2</div>
@@ -469,6 +494,8 @@ async function fetchLatest() {
       $('rr1').textContent = fmt(d1.rise_rate, 3);
       $('pct1').style.width = Math.min(d1.percentage, 100) + '%';
       $('pct1-val').textContent = fmt(d1.percentage);
+      $('mq4-1').textContent = fmt(d1.mq4, 2);
+      $('mq135-1').textContent = fmt(d1.mq135, 2);
       stats1.peak = Math.max(stats1.peak, d1.water_level);
       stats1.avgRR.push(d1.rise_rate);
       if (stats1.avgRR.length > 20) stats1.avgRR.shift();
@@ -481,6 +508,8 @@ async function fetchLatest() {
       $('rr2').textContent = fmt(d2.rise_rate, 3);
       $('pct2').style.width = Math.min(d2.percentage, 100) + '%';
       $('pct2-val').textContent = fmt(d2.percentage);
+      $('mq4-2').textContent = fmt(d2.mq4, 2);
+      $('mq135-2').textContent = fmt(d2.mq135, 2);
       stats2.peak = Math.max(stats2.peak, d2.water_level);
     }
 

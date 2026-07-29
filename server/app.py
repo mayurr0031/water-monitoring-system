@@ -6,7 +6,7 @@ from flask_cors import CORS
 from config import DB_CONFIG, log
 from db import db_lock, get_db_connection, init_database, is_stale, serialize_row
 from prediction import compute_prediction, store_prediction
-from weather import fetch_weather_data, get_latest_weather, store_weather_data
+from weather import fetch_weather_data, get_latest_weather, start_weather_sync_loop, store_weather_data
 
 
 def create_app() -> Flask:
@@ -164,11 +164,20 @@ def create_app() -> Flask:
 
                 def latest_device(device_id):
                     cursor.execute(
-                        "SELECT device_id, water_level, rise_rate, percentage, timestamp "
+                        "SELECT device_id, water_level, rise_rate, percentage, mq4_1, mq135_1, mq4_2, mq135_2, timestamp "
                         "FROM sensor_readings WHERE device_id=%s ORDER BY timestamp DESC LIMIT 1",
                         (device_id,),
                     )
-                    return serialize_row(cursor.fetchone())
+                    row = serialize_row(cursor.fetchone())
+                    if not row:
+                        return None
+                    if device_id == 1:
+                        row["mq4"] = row.get("mq4_1", 0)
+                        row["mq135"] = row.get("mq135_1", 0)
+                    else:
+                        row["mq4"] = row.get("mq4_2", 0)
+                        row["mq135"] = row.get("mq135_2", 0)
+                    return row
 
                 d1 = latest_device(1)
                 d2 = latest_device(2)
@@ -344,9 +353,35 @@ def create_app() -> Flask:
 
     @app.route("/api/weather", methods=["GET"])
     def weather_endpoint():
+        with db_lock:
+            conn = get_db_connection()
+            if not conn:
+                return jsonify({"error": "DB unavailable"}), 500
+            cursor = conn.cursor(dictionary=True)
+            try:
+                from db import _use_db
+
+                _use_db(cursor)
+                cursor.execute(
+                    "SELECT rain_mm, rain_hour, temperature, humidity, timestamp "
+                    "FROM weather_data ORDER BY timestamp DESC LIMIT 24"
+                )
+                rows = [serialize_row(row) for row in cursor.fetchall()]
+            except Exception as exc:
+                log.error(f"weather_endpoint DB error: {exc}")
+                return jsonify({"error": "DB error"}), 500
+            finally:
+                cursor.close()
+                conn.close()
+
+        if rows:
+            latest = rows[0]
+            forecast = list(reversed(rows))
+            return jsonify({"status": "ok", "data": latest, "forecast": forecast}), 200
+
         weather = fetch_weather_data()
         store_weather_data(weather)
-        return jsonify({"status": "ok", "data": weather}), 200
+        return jsonify({"status": "ok", "data": weather, "forecast": [weather]}), 200
 
     @app.route("/api/reset", methods=["POST"])
     def reset_data():
@@ -374,6 +409,7 @@ def create_app() -> Flask:
 
 
 app = create_app()
+start_weather_sync_loop()
 
 
 if __name__ == "__main__":
