@@ -33,13 +33,13 @@ ML_FEATURES = [
     "level_diff",
     "rise_rate_node1",
     "rise_rate_node2",
-    "rain_hour",
-    "rain_intensity",
+    "precipitation_probability",
+    "precipitation_intensity",
 ]
 
 STALE_THRESHOLD_SECONDS = 30
 
-DUMMY_WEATHER = {"rain_mm": 0.0, "rain_hour": 0.0, "temperature": 28.0, "humidity": 65.0}
+DUMMY_WEATHER = {"precipitationIntensity": 0.0, "precipitationProbability": 0.0, "temperature": 28.0, "humidity": 65.0}
 
 MODEL_FILES = {
     "model": BASE_DIR / "models" / "model.joblib",

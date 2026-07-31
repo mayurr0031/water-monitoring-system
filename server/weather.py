@@ -227,9 +227,7 @@ def get_closest_weather() -> dict:
     ML model should use, since it's the best available estimate for the
     current moment (past readings decay, future ones haven't happened yet).
 
-    Also includes rain_mm / rain_hour aliases so existing prediction code
-    (which was written against precipitationIntensity/precipitationProbability
-    under those names) keeps working unchanged.
+    Returns a single forecast hour mapped to the Tomorrow.io-style API keys.
     """
     with db_lock:
         conn = get_db_connection()
@@ -258,8 +256,6 @@ def get_closest_weather() -> dict:
         return _dummy_weather()
 
     data = _row_to_api_dict(row)
-    data["rain_mm"] = data["precipitationIntensity"]
-    data["rain_hour"] = data["precipitationProbability"]
     data["timestamp"] = serialize_row(row)["forecast_time"]
     return data
 
@@ -268,9 +264,9 @@ def _dummy_weather() -> dict:
     weather = DUMMY_WEATHER.copy()
     weather.update({
         "time": None,
-        "humidity": DUMMY_WEATHER["humidity"],
-        "precipitationIntensity": DUMMY_WEATHER["rain_mm"],
-        "precipitationProbability": DUMMY_WEATHER["rain_hour"],
+        "humidity": DUMMY_WEATHER.get("humidity", 0),
+        "precipitationIntensity": DUMMY_WEATHER.get("precipitationIntensity", 0),
+        "precipitationProbability": DUMMY_WEATHER.get("precipitationProbability", 0),
         "rainAccumulation": 0,
         "weatherCode": 0,
         "windSpeed": 0,

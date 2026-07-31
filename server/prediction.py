@@ -48,7 +48,7 @@ def decode_label(index: int) -> str:
 load_models()
 
 
-def compute_prediction(wl1, wl2, rise1, rise2, rain_mm=0.0, rain_hour=0.0):
+def compute_prediction(wl1, wl2, rise1, rise2, precipitation_intensity=0.0, precipitation_probability=0.0):
     """
     Returns (condition_str, flood_prob, blockage_prob, ml_label_str | None).
     Rule-based takes priority over ML.
@@ -71,7 +71,8 @@ def compute_prediction(wl1, wl2, rise1, rise2, rain_mm=0.0, rain_hour=0.0):
 
     if model is not None:
         try:
-            features = np.array([[wl1, wl2, wl1 - wl2, rise1, rise2, rain_hour, rain_mm]], dtype=float)
+            # Model expects the feature order: wl1, wl2, diff, rise1, rise2, precipitation_probability, precipitation_intensity
+            features = np.array([[wl1, wl2, wl1 - wl2, rise1, rise2, precipitation_probability, precipitation_intensity]], dtype=float)
             index = int(model.predict(features)[0])
             probabilities = model.predict_proba(features)[0].tolist()
             ml_label = decode_label(index)
@@ -88,7 +89,7 @@ def compute_prediction(wl1, wl2, rise1, rise2, rain_mm=0.0, rain_hour=0.0):
     return condition, flood_prob, blockage_prob, ml_label
 
 
-def store_prediction(wl1, wl2, rise1, rise2, rain_mm, rain_hour, condition, flood_prob, blockage_prob, ml_label):
+def store_prediction(wl1, wl2, rise1, rise2, precipitation_intensity, precipitation_probability, condition, flood_prob, blockage_prob, ml_label):
     with db_lock:
         conn = get_db_connection()
         if not conn:
@@ -99,7 +100,7 @@ def store_prediction(wl1, wl2, rise1, rise2, rain_mm, rain_hour, condition, floo
             cursor.execute(
                 """INSERT INTO predictions
                    (water_level1, water_level2, level_difference,
-                    rise_rate1, rise_rate2, rain_mm, rain_hour,
+                       rise_rate1, rise_rate2, precipitation_intensity, precipitation_probability,
                     condition_label, flood_probability, blockage_probability, ml_label)
                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                 (
@@ -108,8 +109,8 @@ def store_prediction(wl1, wl2, rise1, rise2, rain_mm, rain_hour, condition, floo
                     abs(wl1 - wl2),
                     rise1,
                     rise2,
-                    rain_mm,
-                    rain_hour,
+                    precipitation_intensity,
+                    precipitation_probability,
                     condition,
                     flood_prob,
                     blockage_prob,

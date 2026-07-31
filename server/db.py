@@ -90,8 +90,8 @@ def init_database():
                 level_difference    FLOAT NOT NULL,
                 rise_rate1          FLOAT NOT NULL,
                 rise_rate2          FLOAT NOT NULL,
-                rain_mm             FLOAT NOT NULL DEFAULT 0,
-                rain_hour           FLOAT NOT NULL DEFAULT 0,
+                precipitation_intensity FLOAT NOT NULL DEFAULT 0,
+                precipitation_probability FLOAT NOT NULL DEFAULT 0,
                 condition_label     VARCHAR(20) NOT NULL DEFAULT 'NORMAL',
                 flood_probability   FLOAT NOT NULL DEFAULT 0,
                 blockage_probability FLOAT NOT NULL DEFAULT 0,
@@ -103,7 +103,7 @@ def init_database():
         )
 
         migrations = [
-            ("condition_label", "ALTER TABLE predictions ADD COLUMN condition_label VARCHAR(20) NOT NULL DEFAULT 'NORMAL' AFTER rain_hour"),
+            ("condition_label", "ALTER TABLE predictions ADD COLUMN condition_label VARCHAR(20) NOT NULL DEFAULT 'NORMAL' AFTER precipitation_probability"),
             ("ml_label", "ALTER TABLE predictions ADD COLUMN ml_label VARCHAR(20) AFTER blockage_probability"),
             ("flood_probability", "ALTER TABLE predictions ADD COLUMN flood_probability FLOAT NOT NULL DEFAULT 0 AFTER condition_label"),
             ("blockage_probability", "ALTER TABLE predictions ADD COLUMN blockage_probability FLOAT NOT NULL DEFAULT 0 AFTER flood_probability"),

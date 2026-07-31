@@ -3,9 +3,6 @@
 		{
 			"name": "HC-SR04",
 			"path": "."
-		},
-		{
-			"path": "../../server"
 		}
 	],
 	"settings": {

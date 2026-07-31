@@ -531,8 +531,8 @@ async function fetchLatest() {
 
     // Weather
     if (w) {
-      $('w-rain').textContent = fmt(w.rain_mm);
-      $('w-prob').textContent = fmt(w.rain_hour);
+      $('w-rain').textContent = fmt(w.precipitationIntensity);
+      $('w-prob').textContent = fmt(w.precipitationProbability);
       $('w-temp').textContent = fmt(w.temperature);
       $('w-hum').textContent  = fmt(w.humidity);
     }

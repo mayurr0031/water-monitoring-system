@@ -1,7 +1,44 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <math.h>
+#include <Preferences.h>
 #include "WaterLevel.h"
+
+Preferences preferences;
+uint32_t deviceId = 0;
+
+uint32_t getOrCreateDeviceId() {
+    preferences.begin("sensor_cfg", false);
+
+    uint32_t savedId = preferences.getUInt("device_id", 0);
+
+    if (savedId == 0) {
+        Serial.println("No device ID found in flash.");
+        Serial.println("Enter device ID (number) and press Enter:");
+
+        while (!Serial.available()) {
+            delay(100);
+        }
+
+        String input = Serial.readStringUntil('\n');
+        input.trim();
+
+        if (input.length() == 0) {
+            input = "1";
+        }
+
+        savedId = input.toInt();
+        preferences.putUInt("device_id", savedId);
+        Serial.print("Saved device ID: ");
+        Serial.println(savedId);
+    } else {
+        Serial.print("Loaded device ID: ");
+        Serial.println(savedId);
+    }
+
+    preferences.end();
+    return savedId;
+}
 
 // ===== WIFI CONFIG =====
 const char* ssid = "Esptest";
@@ -9,7 +46,7 @@ const char* password = "Gouda#15";
 
 // ===== SERVER CONFIG =====
 // Replace with your laptop IP (VERY IMPORTANT)
-const char* serverURL = "http://10.226.209.237:5000/api/water-level";
+const char* serverURL = "http://10.226.209.237:5000/api/sensor_readings";
 
 // ===== SENSOR CONFIG =====
 #define TRIG_PIN 5
@@ -62,7 +99,8 @@ const long sendInterval = 5000; // send every 5 sec
 
 void setup() {
     Serial.begin(115200);
-
+    delay(1000);
+    deviceId = getOrCreateDeviceId();
     analogReadResolution(12);
     analogSetPinAttenuation(MQ4_PIN, ADC_11db);
     analogSetPinAttenuation(MQ135_PIN, ADC_11db);
@@ -109,7 +147,7 @@ void loop() {
             float mq135Ppm = convertMvToPpm(gasReadings.mq135Mv);
 
             String jsonData = "{";
-               jsonData += "\"device_id\":" + String(1) + ",";
+               jsonData += "\"device_id\":" + String(deviceId) + ",";
                jsonData += "\"water_level\":" + String(waterLevel, 2) + ",";
                jsonData += "\"rise_rate\":" + String(riseRate, 4) + ",";
                jsonData += "\"percentage\":" + String(percentage, 2) + ",";

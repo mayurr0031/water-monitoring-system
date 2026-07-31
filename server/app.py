@@ -6,7 +6,7 @@ from flask_cors import CORS
 from config import DB_CONFIG, LOCATION_LAT, LOCATION_LON, log
 from db import db_lock, get_db_connection, init_database, is_stale, serialize_row
 from prediction import compute_prediction, store_prediction
-from weather import get_closest_weather, get_forecast, start_weather_sync_loop, sync_weather_forecast
+from weather import get_closest_weather, get_forecast, get_stored_forecast, start_weather_sync_loop, sync_weather_forecast
 
 
 def create_app() -> Flask:
@@ -16,8 +16,8 @@ def create_app() -> Flask:
     @app.route("/")
     def index():
         return render_template("dashboard.html")
-
-    @app.route("/api/water-level", methods=["POST"])
+    
+    @app.route("/api/sensor_readings", methods=["POST"])
     def receive_water_level():
         """Receive JSON from ESP32 and store in DB. Triggers prediction on every insert."""
         data = request.get_json(silent=True)
@@ -132,16 +132,16 @@ def create_app() -> Flask:
                 float(d2["water_level"]),
                 float(d1["rise_rate"]),
                 float(d2["rise_rate"]),
-                weather.get("rain_mm", 0),
-                weather.get("rain_hour", 0),
+                weather.get("precipitationIntensity", 0),
+                weather.get("precipitationProbability", 0),
             )
             store_prediction(
                 float(d1["water_level"]),
                 float(d2["water_level"]),
                 float(d1["rise_rate"]),
                 float(d2["rise_rate"]),
-                weather.get("rain_mm", 0),
-                weather.get("rain_hour", 0),
+                weather.get("precipitationIntensity", 0),
+                weather.get("precipitationProbability", 0),
                 cond,
                 fp,
                 bp,
@@ -296,8 +296,12 @@ def create_app() -> Flask:
         wl1, wl2 = float(d1["water_level"]), float(d2["water_level"])
         r1, r2 = float(d1["rise_rate"]), float(d2["rise_rate"])
 
-        cond, fp, bp, ml = compute_prediction(wl1, wl2, r1, r2, weather["rain_mm"], weather["rain_hour"])
-        store_prediction(wl1, wl2, r1, r2, weather["rain_mm"], weather["rain_hour"], cond, fp, bp, ml)
+        cond, fp, bp, ml = compute_prediction(
+            wl1, wl2, r1, r2, weather.get("precipitationIntensity", 0), weather.get("precipitationProbability", 0)
+        )
+        store_prediction(
+            wl1, wl2, r1, r2, weather.get("precipitationIntensity", 0), weather.get("precipitationProbability", 0), cond, fp, bp, ml
+        )
 
         return jsonify({
             "status": "ok",
@@ -365,6 +369,16 @@ def create_app() -> Flask:
         return jsonify({
             "status": "success",
             "location": location,
+            "forecastCount": len(forecast),
+            "forecast": forecast,
+        }), 200
+
+    @app.route("/api/weather24", methods=["GET"])
+    def weather24_endpoint():
+        """Return 24 hours of stored weather forecast data from the database."""
+        forecast = get_stored_forecast(24)
+        return jsonify({
+            "status": "success",
             "forecastCount": len(forecast),
             "forecast": forecast,
         }), 200
